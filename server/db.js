@@ -2,7 +2,6 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-const postgres = require("postgres").default;
 
 const DATA = path.join(__dirname, "..", "data");
 const ON_VERCEL = process.env.VERCEL === "1";
@@ -303,6 +302,8 @@ function openSqlite() {
 }
 
 async function openPostgres() {
+  const postgresModule = await import("postgres");
+  const postgres = postgresModule.default;
   sql = postgres(databaseUrl(), {
     ssl: "require",
     max: ON_VERCEL ? 1 : 3,

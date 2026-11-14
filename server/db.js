@@ -5,13 +5,15 @@ const bcrypt = require("bcryptjs");
 const { DatabaseSync } = require("node:sqlite");
 
 const DATA = path.join(__dirname, "..", "data");
+const ON_VERCEL = process.env.VERCEL === "1";
+const RUNTIME = ON_VERCEL ? path.join("/tmp", "eptlo") : DATA;
 
 let db;
 let moderatorCreated = false;
 
 function init() {
   if (db) return db;
-  const file = process.env.DB_PATH || path.join(DATA, "app.sqlite");
+  const file = process.env.DB_PATH || path.join(RUNTIME, "app.sqlite");
   fs.mkdirSync(path.dirname(file), { recursive: true });
   db = new DatabaseSync(file);
   db.exec(`
@@ -119,11 +121,16 @@ function close() {
 
 function secret() {
   if (process.env.SECRET) return process.env.SECRET;
-  const file = path.join(DATA, "secret.txt");
-  if (fs.existsSync(file)) return fs.readFileSync(file, "utf8").trim();
-  const value = crypto.randomBytes(32).toString("hex");
-  fs.writeFileSync(file, value);
-  return value;
+  const file = path.join(RUNTIME, "secret.txt");
+  try {
+    if (fs.existsSync(file)) return fs.readFileSync(file, "utf8").trim();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const value = crypto.randomBytes(32).toString("hex");
+    fs.writeFileSync(file, value);
+    return value;
+  } catch {
+    return "eptlo-vercel";
+  }
 }
 
 function transaction(fn) {

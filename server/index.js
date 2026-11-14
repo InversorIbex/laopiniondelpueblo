@@ -18,7 +18,9 @@ const {
 
 const ROOT = path.join(__dirname, "..");
 const PUBLIC = path.join(ROOT, "public");
-const UPLOADS = process.env.UPLOAD_DIR || path.join(ROOT, "data", "uploads");
+const UPLOADS = process.env.UPLOAD_DIR || (process.env.VERCEL === "1"
+  ? path.join("/tmp", "eptlo", "uploads")
+  : path.join(ROOT, "data", "uploads"));
 
 function createApp() {
   fs.mkdirSync(UPLOADS, { recursive: true });

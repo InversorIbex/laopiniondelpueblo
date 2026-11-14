@@ -13,6 +13,12 @@ npm start
 
 Abre [http://localhost:3000](http://localhost:3000).
 
+## Vercel
+
+En Vercel los archivos de `public` salen por la CDN. Leaflet está copiado en `public/vendor/leaflet` porque allí no se usa `express.static`. La API la atiende el Express exportado en `index.js`.
+
+La base de datos del despliegue está en el disco temporal de la función: las quejas no se conservan cuando la función se reinicia. Para que la sesión use siempre la misma clave, crea la variable de entorno `SECRET` en el proyecto de Vercel.
+
 La primera vez se crea una cuenta de moderación:
 
 - Usuario: `moderador` (también entra con `admin`)

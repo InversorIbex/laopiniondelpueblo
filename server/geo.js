@@ -414,15 +414,15 @@ function cacheKey(prefix, lat, lng) {
   return `${prefix}:${lat.toFixed(3)}:${lng.toFixed(3)}`;
 }
 
-function readCache(db, key) {
+async function readCache(db, key) {
   if (!db) return null;
-  const row = db.prepare("SELECT payload FROM geo_cache WHERE cache_key = ?").get(key);
+  const row = await db.prepare("SELECT payload FROM geo_cache WHERE cache_key = ?").get(key);
   return row ? JSON.parse(row.payload) : null;
 }
 
-function writeCache(db, key, payload) {
+async function writeCache(db, key, payload) {
   if (!db) return;
-  db.prepare(
+  await db.prepare(
     `INSERT INTO geo_cache (cache_key, payload, created_at)
      VALUES (?, ?, ?)
      ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at`
@@ -435,7 +435,7 @@ async function locate(lat, lng, db) {
   if (process.env.GEO_OFFLINE === "1") return local;
 
   const key = cacheKey("rev", lat, lng);
-  const cached = readCache(db, key);
+  const cached = await readCache(db, key);
   if (cached) return { ...local, ...cached, source: cached.source || "mapa" };
   if (negativeCache.get(key) > Date.now()) return local;
 
@@ -459,7 +459,7 @@ async function locate(lat, lng, db) {
     municipioCode: matched?.code || local.municipioCode,
     source: matched ? "mapa" : "centro",
   };
-  writeCache(db, key, result);
+  await writeCache(db, key, result);
   return { ...local, ...result };
 }
 
@@ -522,7 +522,7 @@ async function municipalityPolygon(code, db) {
   const base = { ...item, polygon: null };
   if (process.env.GEO_OFFLINE === "1") return base;
   const key = `poly:${item.code}`;
-  const cached = readCache(db, key);
+  const cached = await readCache(db, key);
   if (cached) return cached;
   if (negativeCache.get(key) > Date.now()) return base;
 
@@ -534,7 +534,7 @@ async function municipalityPolygon(code, db) {
   const geometry = data?.[0]?.geojson;
   const polygon = geometry && (geometry.type === "Polygon" || geometry.type === "MultiPolygon") ? geometry : null;
   const payload = { ...item, polygon };
-  if (polygon) writeCache(db, key, payload);
+  if (polygon) await writeCache(db, key, payload);
   else negativeCache.set(key, Date.now() + 10 * 60 * 1000);
   return payload;
 }

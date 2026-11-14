@@ -13,11 +13,24 @@ npm start
 
 Abre [http://localhost:3000](http://localhost:3000). La app del móvil está en [http://localhost:3000/app/](http://localhost:3000/app/).
 
-## Vercel
+## Vercel y Supabase
 
 En Vercel los archivos de `public` salen por la CDN. Leaflet está copiado en `public/vendor/leaflet` porque allí no se usa `express.static`. La API la atiende el Express exportado en `index.js`.
 
-La base de datos del despliegue está en el disco temporal de la función: las quejas no se conservan cuando la función se reinicia. Para que la sesión use siempre la misma clave, crea la variable de entorno `SECRET` en el proyecto de Vercel.
+Las quejas, los votos y las cuentas se guardan en Supabase (Postgres). En el proyecto de Vercel crea estas variables:
+
+- `DATABASE_URL`: cadena de conexión del proyecto. En Supabase: Project Settings → Database → Connection string → URI, modo Transaction pooler (puerto 6543). Sustituye la contraseña.
+- `SECRET`: una clave larga y fija, para que el inicio de sesión siga valiendo cuando la función se reinicia.
+
+Sin `DATABASE_URL`, el servidor usa el archivo local `data/app.sqlite`. Ese archivo no se sube a git.
+
+Para copiar las quejas que ya están en el SQLite local a Supabase, pon `DATABASE_URL` en un archivo `.env` en la raíz del proyecto y ejecuta:
+
+```bash
+node server/import-sqlite.js
+```
+
+Las fotos siguen en disco. En Vercel el directorio de subidas es temporal: el texto de la queja permanece en Supabase y la foto no, hasta que haya un almacén de archivos.
 
 La primera vez se crea una cuenta de moderación:
 

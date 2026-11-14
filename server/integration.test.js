@@ -46,7 +46,7 @@ test("flujo de queja, moderación, voto y abuso", async (t) => {
   base = `http://127.0.0.1:${server.address().port}`;
   t.after(async () => {
     await new Promise((resolve) => server.close(resolve));
-    dbApi.close();
+    await dbApi.close();
     fs.rmSync(process.env.DB_PATH, { force: true });
     fs.rmSync(`${process.env.DB_PATH}-shm`, { force: true });
     fs.rmSync(`${process.env.DB_PATH}-wal`, { force: true });

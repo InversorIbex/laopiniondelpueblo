@@ -4,4 +4,5 @@ data/app.sqlite
 data/app.sqlite-shm
 data/app.sqlite-wal
 data/secret.txt
+.env
 data/test-*

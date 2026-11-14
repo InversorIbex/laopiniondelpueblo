@@ -24,7 +24,7 @@ const UPLOADS = process.env.UPLOAD_DIR || (process.env.VERCEL === "1"
 
 function createApp() {
   fs.mkdirSync(UPLOADS, { recursive: true });
-  const db = dbApi.init();
+  const db = dbApi.getDb();
   geo.load();
 
   const app = express();
@@ -117,8 +117,8 @@ function createApp() {
     res.json(place);
   }));
 
-  app.get("/api/stats", (req, res) => {
-    const row = db
+  app.get("/api/stats", asyncHandler(async (req, res) => {
+    const row = await db
       .prepare(
         `SELECT
            SUM(CASE WHEN status = 'verified' THEN 1 ELSE 0 END) AS verified,
@@ -127,19 +127,19 @@ function createApp() {
       )
       .get();
     res.json({ verified: row.verified || 0, resolved: row.resolved || 0 });
-  });
+  }));
 
   app.post("/api/auth/register", limit("register", 8, 60 * 60 * 1000), asyncHandler(async (req, res) => {
     const username = cleanUsername(req.body?.username);
     const password = String(req.body?.password || "");
     if (!username) return sendError(res, 400, "El usuario necesita de 3 a 24 letras o números, y empezar por una letra.");
     if (password.length < 8) return sendError(res, 400, "La contraseña necesita al menos 8 caracteres.");
-    const exists = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
+    const exists = await db.prepare("SELECT id FROM users WHERE username = ?").get(username);
     if (exists) return sendError(res, 409, "Ese usuario ya existe. Prueba con otro.");
-    const info = db
+    const info = await db
       .prepare("INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'user', ?)")
       .run(username, bcrypt.hashSync(password, 10), new Date().toISOString());
-    const user = publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(Number(info.lastInsertRowid)));
+    const user = publicUser(await db.prepare("SELECT * FROM users WHERE id = ?").get(Number(info.lastInsertRowid)));
     setSession(res, user.id);
     res.status(201).json({ user });
   }));
@@ -148,7 +148,7 @@ function createApp() {
     const typed = cleanUsername(req.body?.username);
     const username = typed === "admin" ? "moderador" : typed;
     const password = String(req.body?.password || "");
-    const row = username ? db.prepare("SELECT * FROM users WHERE username = ?").get(username) : null;
+    const row = username ? await db.prepare("SELECT * FROM users WHERE username = ?").get(username) : null;
     if (!row || !bcrypt.compareSync(password, row.password_hash)) {
       return sendError(res, 401, "Usuario o contraseña incorrectos.");
     }
@@ -161,72 +161,72 @@ function createApp() {
     res.json({ ok: true });
   });
 
-  app.get("/api/auth/me", (req, res) => {
-    const user = currentUser(req);
+  app.get("/api/auth/me", asyncHandler(async (req, res) => {
+    const user = await currentUser(req);
     res.json({ user: user ? publicUser(user) : null });
-  });
+  }));
 
   app.post("/api/auth/password", asyncHandler(async (req, res) => {
-    const user = currentUser(req);
+    const user = await currentUser(req);
     if (!user) return sendError(res, 401, "Entra con tu cuenta para continuar.");
     const next = String(req.body?.next || "");
     if (next.length < 8) return sendError(res, 400, "La contraseña nueva necesita al menos 8 caracteres.");
     if (!bcrypt.compareSync(String(req.body?.current || ""), user.password_hash)) {
       return sendError(res, 401, "La contraseña actual no coincide.");
     }
-    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(bcrypt.hashSync(next, 10), user.id);
+    await db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(bcrypt.hashSync(next, 10), user.id);
     res.json({ ok: true });
   }));
 
-  app.get("/api/complaints", (req, res) => {
-    const viewer = currentUser(req);
-    const rows = filterComplaints(req.query, viewer);
+  app.get("/api/complaints", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
+    const rows = await filterComplaints(req.query, viewer);
     res.json(rows.map((row) => present(row, viewer)).filter(Boolean));
-  });
+  }));
 
-  app.get("/api/complaints/mias", (req, res) => {
-    const viewer = currentUser(req);
+  app.get("/api/complaints/mias", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     if (!viewer) return sendError(res, 401, "Entra con tu cuenta para ver tus quejas.");
-    const rows = db
+    const rows = await db
       .prepare("SELECT * FROM complaints WHERE author_user_id = ? ORDER BY created_at DESC")
       .all(viewer.id);
     res.json(rows.map((row) => present(row, viewer)));
-  });
+  }));
 
-  app.post("/api/complaints/por-token", (req, res) => {
+  app.post("/api/complaints/por-token", asyncHandler(async (req, res) => {
     const tokens = Array.isArray(req.body?.tokens) ? req.body.tokens.slice(0, 50) : [];
     const found = [];
     for (const item of tokens) {
       const id = Number(item?.id);
       const token = String(item?.token || "");
       if (!id || !token) continue;
-      const row = db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
+      const row = await db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
       if (row && row.author_token_hash === hashToken(token)) found.push(present(row, null, true));
     }
     res.json(found);
-  });
+  }));
 
-  app.get("/api/complaints/:id", (req, res) => {
-    const viewer = currentUser(req);
-    const row = db.prepare("SELECT * FROM complaints WHERE id = ?").get(Number(req.params.id));
+  app.get("/api/complaints/:id", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
+    const row = await db.prepare("SELECT * FROM complaints WHERE id = ?").get(Number(req.params.id));
     if (!row) return sendError(res, 404, "No encontramos esa queja.");
     const token = req.get("x-author-token") || "";
     const ownsToken = token && row.author_token_hash === hashToken(token);
     const data = present(row, viewer, ownsToken);
     if (!data) return sendError(res, 404, "Esa queja todavía no es pública.");
     if (viewer) {
-      const vote = db
+      const vote = await db
         .prepare("SELECT value FROM votes WHERE complaint_id = ? AND user_id = ?")
         .get(row.id, viewer.id);
       data.myVote = vote?.value || null;
       data.voteState = voteRestriction(toLogicUser(viewer), new Date());
     }
-    const requests = db
+    const requests = await db
       .prepare("SELECT COUNT(*) AS total FROM resolve_requests WHERE complaint_id = ?")
       .get(row.id);
     data.resolveRequests = requests.total || 0;
     res.json(data);
-  });
+  }));
 
   app.post(
     "/api/complaints",
@@ -255,12 +255,12 @@ function createApp() {
           return cleanup(req, sendError(res, 400, "El punto tiene que estar en España."));
         }
 
-        const viewer = currentUser(req);
-        const alias = resolveAlias(req.body, viewer);
+        const viewer = await currentUser(req);
+        const alias = await resolveAlias(req.body, viewer);
         if (alias.error) return cleanup(req, sendError(res, 400, alias.error));
         const authorToken = crypto.randomBytes(24).toString("hex");
         const photos = (req.files || []).map((file) => file.filename);
-        const info = db
+        const info = await db
           .prepare(
             `INSERT INTO complaints (
               lat, lng, category, comment, photos, ccaa, provincia, municipio, municipio_code,
@@ -285,7 +285,7 @@ function createApp() {
           );
         const id = Number(info.lastInsertRowid);
         res.status(201).json({
-          complaint: present(db.prepare("SELECT * FROM complaints WHERE id = ?").get(id), viewer, true),
+          complaint: present(await db.prepare("SELECT * FROM complaints WHERE id = ?").get(id), viewer, true),
           authorToken,
           place,
         });
@@ -296,19 +296,19 @@ function createApp() {
     })
   );
 
-  app.post("/api/complaints/:id/vote", limit("votes", 40, 60 * 60 * 1000), (req, res) => {
-    const viewer = currentUser(req);
+  app.post("/api/complaints/:id/vote", limit("votes", 40, 60 * 60 * 1000), asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     const id = Number(req.params.id);
     const value = req.body?.value === "fake" ? "fake" : req.body?.value === "real" ? "real" : "";
     const voterLat = Number(req.body?.lat);
     const voterLng = Number(req.body?.lng);
-    const complaint = db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
+    const complaint = await db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
     const distanceKm =
       complaint && validCoord(voterLat, voterLng)
         ? haversineKm(voterLat, voterLng, complaint.lat, complaint.lng)
         : null;
     const recentVotes = viewer
-      ? db
+      ? await db
           .prepare("SELECT value, created_at AS createdAt FROM votes WHERE user_id = ?")
           .all(viewer.id)
       : [];
@@ -322,11 +322,11 @@ function createApp() {
     });
     if (!decision.ok) return sendError(res, decision.status, decision.error);
 
-    const already = db.prepare("SELECT id FROM votes WHERE complaint_id = ? AND user_id = ?").get(id, viewer.id);
+    const already = await db.prepare("SELECT id FROM votes WHERE complaint_id = ? AND user_id = ?").get(id, viewer.id);
     if (already) return sendError(res, 409, "Ya has votado esta queja.");
 
-    const outcome = dbApi.transaction(() => {
-      db.prepare(
+    const outcome = await dbApi.transaction(async (tx) => {
+      await tx.prepare(
         `INSERT INTO votes (complaint_id, user_id, value, voter_lat, voter_lng, is_rehab, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`
       ).run(
@@ -339,51 +339,51 @@ function createApp() {
         new Date().toISOString()
       );
       const column = value === "real" ? "real_votes" : "fake_votes";
-      db.prepare(`UPDATE complaints SET ${column} = ${column} + 1 WHERE id = ?`).run(id);
+      await tx.prepare(`UPDATE complaints SET ${column} = ${column} + 1 WHERE id = ?`).run(id);
       if (decision.isRehab) {
-        db.prepare(
+        await tx.prepare(
           "UPDATE users SET rehab_remaining = CASE WHEN rehab_remaining > 0 THEN rehab_remaining - 1 ELSE 0 END WHERE id = ?"
         ).run(viewer.id);
       }
       if (decision.penalize) {
         const until = new Date(Date.now() + RULES.penaltyDays * 24 * 60 * 60 * 1000).toISOString();
-        db.prepare("UPDATE users SET penalty_until = ?, rehab_remaining = ? WHERE id = ?").run(
+        await tx.prepare("UPDATE users SET penalty_until = ?, rehab_remaining = ? WHERE id = ?").run(
           until,
           RULES.rehabRequired,
           viewer.id
         );
       }
-      const updated = db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
+      const updated = await tx.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
       let removed = false;
       if (updated.status === "verified" && shouldRemove(updated.real_votes, updated.fake_votes)) {
-        db.prepare("UPDATE complaints SET status = 'removed', removed_reason = 'votos' WHERE id = ?").run(id);
+        await tx.prepare("UPDATE complaints SET status = 'removed', removed_reason = 'votos' WHERE id = ?").run(id);
         removed = true;
       }
       return { removed, penalize: Boolean(decision.penalize) };
     });
 
-    const freshUser = db.prepare("SELECT * FROM users WHERE id = ?").get(viewer.id);
-    const fresh = db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
+    const freshUser = await db.prepare("SELECT * FROM users WHERE id = ?").get(viewer.id);
+    const fresh = await db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
     res.json({
       complaint: present(fresh, freshUser, true),
       removed: outcome.removed,
       penalized: outcome.penalize,
       user: publicUser(freshUser),
     });
-  });
+  }));
 
-  app.post("/api/complaints/:id/resolver", (req, res) => {
-    const viewer = currentUser(req);
+  app.post("/api/complaints/:id/resolver", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     if (!viewer) return sendError(res, 401, "Entra con tu cuenta para marcar una queja como resuelta.");
     const id = Number(req.params.id);
-    const row = db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
+    const row = await db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
     if (!row || !["verified", "resolved"].includes(row.status)) {
       return sendError(res, 404, "Esa queja no está publicada.");
     }
     if (row.status === "resolved") return res.json({ complaint: present(row, viewer), resolveRequests: RULES.resolveRequestsNeeded });
 
     if (viewer.role === "moderator") {
-      markResolved(row, viewer.id, "moderator");
+      await markResolved(row, viewer.id, "moderator");
     } else {
       const lat = Number(req.body?.lat);
       const lng = Number(req.body?.lng);
@@ -392,55 +392,56 @@ function createApp() {
       if (distance > RULES.voteRadiusKm) {
         return sendError(res, 403, "Solo quien está a menos de 10 km puede decir que ya está resuelta.");
       }
-      db.prepare(
-        "INSERT OR IGNORE INTO resolve_requests (complaint_id, user_id, created_at) VALUES (?, ?, ?)"
+      await db.prepare(
+        `INSERT INTO resolve_requests (complaint_id, user_id, created_at) VALUES (?, ?, ?)
+         ON CONFLICT DO NOTHING`
       ).run(id, viewer.id, new Date().toISOString());
-      const count = db.prepare("SELECT COUNT(*) AS total FROM resolve_requests WHERE complaint_id = ?").get(id).total;
-      if (count >= RULES.resolveRequestsNeeded) markResolved(row, null, "vecinos");
+      const count = (await db.prepare("SELECT COUNT(*) AS total FROM resolve_requests WHERE complaint_id = ?").get(id)).total;
+      if (count >= RULES.resolveRequestsNeeded) await markResolved(row, null, "vecinos");
     }
-    const fresh = db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
-    const requests = db.prepare("SELECT COUNT(*) AS total FROM resolve_requests WHERE complaint_id = ?").get(id);
+    const fresh = await db.prepare("SELECT * FROM complaints WHERE id = ?").get(id);
+    const requests = await db.prepare("SELECT COUNT(*) AS total FROM resolve_requests WHERE complaint_id = ?").get(id);
     res.json({ complaint: present(fresh, viewer), resolveRequests: requests.total || 0 });
-  });
+  }));
 
-  app.get("/api/mod/resumen", (req, res) => {
-    if (!isMod(req)) return sendError(res, 403, "Solo moderación puede ver este panel.");
-    const counts = db
+  app.get("/api/mod/resumen", asyncHandler(async (req, res) => {
+    if (!(await isMod(req))) return sendError(res, 403, "Solo moderación puede ver este panel.");
+    const counts = await db
       .prepare("SELECT status, COUNT(*) AS total FROM complaints GROUP BY status")
       .all();
     const byStatus = Object.fromEntries(counts.map((row) => [row.status, row.total]));
     res.json({ byStatus, rules: RULES });
-  });
+  }));
 
-  app.get("/api/mod/complaints", (req, res) => {
-    const viewer = currentUser(req);
+  app.get("/api/mod/complaints", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     if (!viewer || viewer.role !== "moderator") return sendError(res, 403, "Solo moderación puede ver este panel.");
     const status = STATUSES[req.query.status] ? req.query.status : "pending";
-    const rows = db
+    const rows = await db
       .prepare("SELECT * FROM complaints WHERE status = ? ORDER BY created_at ASC LIMIT 200")
       .all(status);
     res.json(rows.map((row) => present(row, viewer, true)));
-  });
+  }));
 
-  app.post("/api/mod/complaints/:id/aprobar", (req, res) => moderate(req, res, "verified", "aprobar"));
-  app.post("/api/mod/complaints/:id/rechazar", (req, res) => moderate(req, res, "rejected", "rechazar"));
-  app.post("/api/mod/complaints/:id/resolver", (req, res) => {
-    const viewer = currentUser(req);
+  app.post("/api/mod/complaints/:id/aprobar", asyncHandler((req, res) => moderate(req, res, "verified", "aprobar")));
+  app.post("/api/mod/complaints/:id/rechazar", asyncHandler((req, res) => moderate(req, res, "rejected", "rechazar")));
+  app.post("/api/mod/complaints/:id/resolver", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     if (!viewer || viewer.role !== "moderator") return sendError(res, 403, "Solo moderación puede hacer esto.");
-    const row = db.prepare("SELECT * FROM complaints WHERE id = ?").get(Number(req.params.id));
+    const row = await db.prepare("SELECT * FROM complaints WHERE id = ?").get(Number(req.params.id));
     if (!row) return sendError(res, 404, "No encontramos esa queja.");
     if (row.status === "pending" || row.status === "rejected") {
       return sendError(res, 400, "Primero hay que publicarla.");
     }
-    markResolved(row, viewer.id, "moderator");
-    logMod(row.id, viewer.id, "resolver", cleanText(req.body?.note || ""));
-    res.json({ complaint: present(db.prepare("SELECT * FROM complaints WHERE id = ?").get(row.id), viewer, true) });
-  });
+    await markResolved(row, viewer.id, "moderator");
+    await logMod(row.id, viewer.id, "resolver", cleanText(req.body?.note || ""));
+    res.json({ complaint: present(await db.prepare("SELECT * FROM complaints WHERE id = ?").get(row.id), viewer, true) });
+  }));
 
-  app.patch("/api/mod/complaints/:id", (req, res) => {
-    const viewer = currentUser(req);
+  app.patch("/api/mod/complaints/:id", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     if (!viewer || viewer.role !== "moderator") return sendError(res, 403, "Solo moderación puede hacer esto.");
-    const row = db.prepare("SELECT * FROM complaints WHERE id = ?").get(Number(req.params.id));
+    const row = await db.prepare("SELECT * FROM complaints WHERE id = ?").get(Number(req.params.id));
     if (!row) return sendError(res, 404, "No encontramos esa queja.");
     const ccaa = cleanText(req.body?.ccaa).slice(0, 80);
     const provincia = cleanText(req.body?.provincia).slice(0, 80);
@@ -448,33 +449,33 @@ function createApp() {
     if (!ccaa || !provincia || !municipio) {
       return sendError(res, 400, "Comunidad, provincia y ayuntamiento son obligatorios.");
     }
-    db.prepare("UPDATE complaints SET ccaa = ?, provincia = ?, municipio = ?, location_source = 'moderacion' WHERE id = ?").run(
+    await db.prepare("UPDATE complaints SET ccaa = ?, provincia = ?, municipio = ?, location_source = 'moderacion' WHERE id = ?").run(
       ccaa,
       provincia,
       municipio,
       row.id
     );
-    logMod(row.id, viewer.id, "corregir-territorio", `${ccaa} / ${provincia} / ${municipio}`);
-    res.json({ complaint: present(db.prepare("SELECT * FROM complaints WHERE id = ?").get(row.id), viewer, true) });
-  });
+    await logMod(row.id, viewer.id, "corregir-territorio", `${ccaa} / ${provincia} / ${municipio}`);
+    res.json({ complaint: present(await db.prepare("SELECT * FROM complaints WHERE id = ?").get(row.id), viewer, true) });
+  }));
 
-  app.delete("/api/mod/complaints/:id", (req, res) => {
-    const viewer = currentUser(req);
+  app.delete("/api/mod/complaints/:id", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     if (!viewer || viewer.role !== "moderator") return sendError(res, 403, "Solo moderación puede hacer esto.");
-    const row = db.prepare("SELECT * FROM complaints WHERE id = ?").get(Number(req.params.id));
+    const row = await db.prepare("SELECT * FROM complaints WHERE id = ?").get(Number(req.params.id));
     if (!row) return sendError(res, 404, "No encontramos esa queja.");
     for (const file of JSON.parse(row.photos || "[]")) {
       fs.rmSync(path.join(UPLOADS, file), { force: true });
     }
-    db.prepare("DELETE FROM votes WHERE complaint_id = ?").run(row.id);
-    db.prepare("DELETE FROM resolve_requests WHERE complaint_id = ?").run(row.id);
-    db.prepare("DELETE FROM complaints WHERE id = ?").run(row.id);
-    logMod(row.id, viewer.id, "borrar", "");
+    await db.prepare("DELETE FROM votes WHERE complaint_id = ?").run(row.id);
+    await db.prepare("DELETE FROM resolve_requests WHERE complaint_id = ?").run(row.id);
+    await db.prepare("DELETE FROM complaints WHERE id = ?").run(row.id);
+    await logMod(row.id, viewer.id, "borrar", "");
     res.json({ ok: true });
-  });
+  }));
 
-  app.get("/api/mod/export", (req, res) => {
-    const viewer = currentUser(req);
+  app.get("/api/mod/export", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     if (!viewer || viewer.role !== "moderator") return sendError(res, 403, "Solo moderación puede exportar.");
     const where = ["status IN ('verified', 'resolved')"];
     const params = [];
@@ -488,7 +489,7 @@ function createApp() {
       where.splice(0, 1, "status = ?");
       params.unshift(String(req.query.status));
     }
-    const rows = db.prepare(`SELECT * FROM complaints WHERE ${where.join(" AND ")} ORDER BY created_at DESC`).all(...params);
+    const rows = await db.prepare(`SELECT * FROM complaints WHERE ${where.join(" AND ")} ORDER BY created_at DESC`).all(...params);
     const format = req.query.format === "json" ? "json" : "csv";
     if (format === "json") return res.json(rows.map((row) => present(row, viewer, true)));
     const header = [
@@ -532,48 +533,48 @@ function createApp() {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename=quejas.csv");
     res.send(`\uFEFF${lines.join("\n")}`);
-  });
+  }));
 
-  app.get("/api/mod/users", (req, res) => {
-    const viewer = currentUser(req);
+  app.get("/api/mod/users", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     if (!viewer || viewer.role !== "moderator") return sendError(res, 403, "Solo moderación puede ver las cuentas.");
-    const rows = db.prepare("SELECT * FROM users ORDER BY created_at DESC LIMIT 300").all();
+    const rows = await db.prepare("SELECT * FROM users ORDER BY created_at DESC LIMIT 300").all();
     res.json(rows.map(publicUser));
-  });
+  }));
 
-  app.post("/api/mod/users/:id/rol", (req, res) => {
-    const viewer = currentUser(req);
+  app.post("/api/mod/users/:id/rol", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     if (!viewer || viewer.role !== "moderator") return sendError(res, 403, "Solo moderación puede hacer esto.");
     const role = req.body?.role === "moderator" ? "moderator" : "user";
-    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(req.params.id));
+    const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(Number(req.params.id));
     if (!user) return sendError(res, 404, "No encontramos esa cuenta.");
     if (user.id === viewer.id && role !== "moderator") {
       return sendError(res, 400, "No puedes quitarte tu propio acceso de moderación.");
     }
-    db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, user.id);
-    logMod(null, viewer.id, "rol", `${user.username} → ${role}`);
-    res.json({ user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(user.id)) });
-  });
+    await db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, user.id);
+    await logMod(null, viewer.id, "rol", `${user.username} → ${role}`);
+    res.json({ user: publicUser(await db.prepare("SELECT * FROM users WHERE id = ?").get(user.id)) });
+  }));
 
-  app.post("/api/mod/users/:id/penalizacion", (req, res) => {
-    const viewer = currentUser(req);
+  app.post("/api/mod/users/:id/penalizacion", asyncHandler(async (req, res) => {
+    const viewer = await currentUser(req);
     if (!viewer || viewer.role !== "moderator") return sendError(res, 403, "Solo moderación puede hacer esto.");
-    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(req.params.id));
+    const user = await db.prepare("SELECT * FROM users WHERE id = ?").get(Number(req.params.id));
     if (!user) return sendError(res, 404, "No encontramos esa cuenta.");
     const clear = Boolean(req.body?.clear);
     if (clear) {
-      db.prepare("UPDATE users SET penalty_until = NULL, rehab_remaining = 0 WHERE id = ?").run(user.id);
+      await db.prepare("UPDATE users SET penalty_until = NULL, rehab_remaining = 0 WHERE id = ?").run(user.id);
     } else {
       const days = Math.min(30, Math.max(1, Number(req.body?.days) || RULES.penaltyDays));
       const until = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-      db.prepare("UPDATE users SET penalty_until = ?, rehab_remaining = ? WHERE id = ?").run(
+      await db.prepare("UPDATE users SET penalty_until = ?, rehab_remaining = ? WHERE id = ?").run(
         until,
         RULES.rehabRequired,
         user.id
       );
     }
-    res.json({ user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(user.id)) });
-  });
+    res.json({ user: publicUser(await db.prepare("SELECT * FROM users WHERE id = ?").get(user.id)) });
+  }));
 
   app.use((error, req, res, next) => {
     cleanupFiles(req);
@@ -586,36 +587,36 @@ function createApp() {
 
   return app;
 
-  function moderate(req, res, status, action) {
-    const viewer = currentUser(req);
+  async function moderate(req, res, status, action) {
+    const viewer = await currentUser(req);
     if (!viewer || viewer.role !== "moderator") return sendError(res, 403, "Solo moderación puede hacer esto.");
-    const row = db.prepare("SELECT * FROM complaints WHERE id = ?").get(Number(req.params.id));
+    const row = await db.prepare("SELECT * FROM complaints WHERE id = ?").get(Number(req.params.id));
     if (!row) return sendError(res, 404, "No encontramos esa queja.");
     const note = cleanText(req.body?.note || "").slice(0, 500);
     if (status === "rejected" && note.length < 4) {
       return sendError(res, 400, "Escribe un motivo breve para no publicarla.");
     }
-    db.prepare(
+    await db.prepare(
       `UPDATE complaints
        SET status = ?, moderated_at = ?, moderator_id = ?, moderation_note = ?
        WHERE id = ?`
     ).run(status, new Date().toISOString(), viewer.id, note, row.id);
-    logMod(row.id, viewer.id, action, note);
-    res.json({ complaint: present(db.prepare("SELECT * FROM complaints WHERE id = ?").get(row.id), viewer, true) });
+    await logMod(row.id, viewer.id, action, note);
+    res.json({ complaint: present(await db.prepare("SELECT * FROM complaints WHERE id = ?").get(row.id), viewer, true) });
   }
 
-  function markResolved(row, moderatorId, how) {
-    db.prepare("UPDATE complaints SET status = 'resolved', resolved_at = ? WHERE id = ?").run(new Date().toISOString(), row.id);
-    logMod(row.id, moderatorId, "resuelta", how);
+  async function markResolved(row, moderatorId, how) {
+    await db.prepare("UPDATE complaints SET status = 'resolved', resolved_at = ? WHERE id = ?").run(new Date().toISOString(), row.id);
+    await logMod(row.id, moderatorId, "resuelta", how);
   }
 
-  function logMod(complaintId, moderatorId, action, note) {
-    db.prepare(
+  async function logMod(complaintId, moderatorId, action, note) {
+    await db.prepare(
       "INSERT INTO moderation_log (complaint_id, moderator_id, action, note, created_at) VALUES (?, ?, ?, ?, ?)"
     ).run(complaintId, moderatorId, action, note || "", new Date().toISOString());
   }
 
-  function filterComplaints(query, viewer) {
+  async function filterComplaints(query, viewer) {
     const where = [];
     const params = [];
     const publicStatuses = ["verified", "resolved"];
@@ -645,7 +646,7 @@ function createApp() {
     return db.prepare(`SELECT * FROM complaints WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT 300`).all(...params);
   }
 
-  function currentUser(req) {
+  async function currentUser(req) {
     const token = readCookie(req, "session");
     if (!token) return null;
     const id = verifySession(token);
@@ -653,8 +654,8 @@ function createApp() {
     return db.prepare("SELECT * FROM users WHERE id = ?").get(id);
   }
 
-  function isMod(req) {
-    const user = currentUser(req);
+  async function isMod(req) {
+    const user = await currentUser(req);
     return Boolean(user && user.role === "moderator");
   }
 
@@ -762,7 +763,7 @@ function present(row, viewer, force) {
   };
 }
 
-function resolveAlias(body, viewer) {
+async function resolveAlias(body, viewer) {
   const mode = body?.aliasMode || "auto";
   if (mode === "user") {
     if (!viewer) return { error: "Entra con tu cuenta para firmar con tu usuario." };
@@ -776,7 +777,7 @@ function resolveAlias(body, viewer) {
   const database = dbApi.getDb();
   for (let i = 0; i < 20; i += 1) {
     const candidate = `Vecino_${1000 + Math.floor(Math.random() * 9000)}`;
-    const taken = database.prepare("SELECT id FROM complaints WHERE author_alias = ?").get(candidate);
+    const taken = await database.prepare("SELECT id FROM complaints WHERE author_alias = ?").get(candidate);
     if (!taken) return { name: candidate };
   }
   return { name: `Vecino_${crypto.randomBytes(3).toString("hex")}` };
@@ -850,13 +851,19 @@ function limit(name, max, windowMs) {
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3000;
   const app = createApp();
-  const created = dbApi.moderatorWasCreated();
-  app.listen(port, () => {
-    console.log(`El Pueblo Tiene la Opinión está en http://localhost:${port}`);
-    if (created) {
-      console.log("Se ha creado la cuenta de moderación: usuario moderador / contraseña Pueblo2026!");
-      console.log("Cámbiala en cuanto entres, desde el menú de tu cuenta.");
-    }
+  dbApi.ready().then(() => {
+    const created = dbApi.moderatorWasCreated();
+    app.listen(port, () => {
+      console.log(`El Pueblo Tiene la Opinión está en http://localhost:${port}`);
+      if (dbApi.usesSupabase()) console.log("Los datos se guardan en Supabase.");
+      if (created) {
+        console.log("Se ha creado la cuenta de moderación: usuario moderador / contraseña Pueblo2026!");
+        console.log("Cámbiala en cuanto entres, desde el menú de tu cuenta.");
+      }
+    });
+  }).catch((error) => {
+    console.error(error);
+    process.exit(1);
   });
 }
 

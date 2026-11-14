@@ -1,0 +1,20 @@
+{
+  "name": "el-pueblo-tiene-la-opinion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plataforma ciudadana para reportar incidencias en la vía pública de España",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "leaflet": "^1.9.4",
+    "multer": "^2.5.0"
+  }
+}

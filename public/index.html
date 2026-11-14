@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>El Pueblo Tiene la Opinión</title>
+  <meta name="description" content="Los vecinos reportan lo que falla en la calle. Las quejas se ordenan por comunidad, provincia y ayuntamiento.">
+  <meta name="theme-color" content="#f6f1e7">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <a class="skip" href="#contenido">Saltar al contenido</a>
+  <header class="top">
+    <a class="brand" href="#/mapa">
+      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
+        <rect width="48" height="48" rx="16" fill="#b7e4d4"/>
+        <path d="M13 15h20a8 8 0 0 1 8 8 8 8 0 0 1-8 8H22l-6 5.5V31h-3a8 8 0 0 1-8-8 8 8 0 0 1 8-8z" fill="#fffdf9"/>
+        <circle cx="24" cy="23" r="3.3" fill="#1f6f93"/>
+      </svg>
+      <span class="brand-name">El Pueblo Tiene la Opinión</span>
+    </a>
+    <nav class="nav" aria-label="Secciones">
+      <a data-nav="mapa" href="#/mapa">Mapa</a>
+      <a data-nav="quejas" href="#/quejas">Quejas</a>
+      <a data-nav="como" href="#/como">Cómo funciona</a>
+      <a data-nav="moderar" href="#/moderar" hidden>Moderación</a>
+    </nav>
+    <div class="top-actions">
+      <a class="btn btn-mint btn-small" id="review-link" href="#/moderar" data-action="open-review" hidden>Aprobar</a>
+      <button class="btn btn-primary" type="button" data-action="report">Reportar</button>
+      <div id="account"></div>
+    </div>
+  </header>
+  <div id="penalty" class="penalty" hidden></div>
+  <main id="contenido">
+    <section class="view map-layout" data-view="mapa">
+      <aside class="side" id="side">
+        <button class="sheet-handle" type="button" data-action="toggle-sheet" aria-controls="side-scroll">Territorio y quejas</button>
+        <div class="side-scroll" id="side-scroll">
+          <div class="intro">
+            <p class="eyebrow">Calle a calle</p>
+            <h1>Tu barrio también cuenta</h1>
+            <p>Cuéntanos qué falla en la calle. Lo asociamos al ayuntamiento para que pueda llegar a quien lo arregla.</p>
+            <p class="stats" id="stats">Cargando el recuento…</p>
+            <button class="btn btn-primary btn-block" type="button" data-action="report">Colocar una queja en el mapa</button>
+            <p class="hint">O toca el mapa: la ficha para contarlo se abre encima, sin usar este panel.</p>
+          </div>
+
+          <div class="jumps" aria-label="Ir a una zona">
+            <button type="button" data-jump="peninsula">Península</button>
+            <button type="button" data-jump="canarias">Canarias</button>
+            <button type="button" data-jump="baleares">Baleares</button>
+            <button type="button" data-jump="ceuta">Ceuta</button>
+            <button type="button" data-jump="melilla">Melilla</button>
+          </div>
+
+          <form class="territory" id="territory-form">
+            <label>Comunidad autónoma
+              <select id="sel-ccaa"><option value="">Todas</option></select>
+            </label>
+            <label>Provincia
+              <select id="sel-prov"><option value="">Todas</option></select>
+            </label>
+            <label>Ayuntamiento
+              <select id="sel-mun" disabled><option value="">Elige primero la provincia</option></select>
+            </label>
+            <label>Buscar pueblo o ciudad
+              <input id="search-mun" type="search" placeholder="Por ejemplo, Getafe" autocomplete="off">
+            </label>
+            <div id="search-results" class="search-results" hidden></div>
+          </form>
+
+          <fieldset class="layers">
+            <legend>Capas del mapa</legend>
+            <label><input id="layer-ccaa" type="checkbox" checked> Comunidades</label>
+            <label><input id="layer-prov" type="checkbox" checked> Provincias</label>
+            <label><input id="layer-mun" type="checkbox"> Ayuntamientos</label>
+            <label><input id="hide-resolved" type="checkbox"> Ocultar resueltas</label>
+          </fieldset>
+
+          <div>
+            <p class="field-label">Filtrar pins</p>
+            <div id="legend" class="legend"></div>
+          </div>
+
+          <p class="osm-note">Callejero del IGN. El botón Satélite muestra la ortofoto del PNOA. Las fronteras son orientativas.</p>
+        </div>
+      </aside>
+      <div class="map-wrap">
+        <div id="map" role="application" aria-label="Mapa de España con las quejas"></div>
+        <div class="map-tools">
+          <button type="button" data-action="locate">Dónde estoy</button>
+          <button type="button" id="satellite-toggle" data-action="satellite" aria-pressed="false">Satélite</button>
+        </div>
+        <p id="map-loading" class="map-loading">Cargando el mapa de España…</p>
+        <form id="report-form" class="composer" hidden novalidate>
+          <div class="composer-bar">
+            <h2>Nueva queja</h2>
+            <button class="btn btn-ghost btn-small" type="button" data-action="cancel-report">Cerrar</button>
+          </div>
+          <div class="composer-body">
+            <p class="hint">Toca el mapa o arrastra el pin hasta el sitio exacto.</p>
+            <p id="place-label" class="place-label">Toca el mapa para marcar el sitio.</p>
+            <button class="btn btn-soft btn-small" type="button" data-action="locate">Usar la ubicación del móvil</button>
+            <label>Cuéntalo
+              <textarea id="report-comment" name="comment" rows="3" maxlength="2000" placeholder="Qué pasa, en qué calle y desde cuándo."></textarea>
+            </label>
+            <p id="comment-count" class="hint">0 / 20 caracteres mínimo</p>
+            <p class="field-label">Qué ocurre</p>
+            <div id="report-cats" class="cat-grid"></div>
+            <label>Fotos, si las tienes
+              <input name="photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+            </label>
+            <p class="hint">Hasta 4 fotos, 5 MB cada una. Puedes hacerla ahora o elegirla.</p>
+            <div id="photo-preview" class="photo-preview"></div>
+            <fieldset class="alias">
+              <legend>Cómo firmas</legend>
+              <label><input type="radio" name="aliasMode" value="auto" checked> Nombre automático, tipo Vecino_3847</label>
+              <label><input type="radio" name="aliasMode" value="custom"> Este nombre <input name="alias" type="text" maxlength="24" placeholder="Un alias"></label>
+              <label id="alias-user" hidden><input type="radio" name="aliasMode" value="user"> Mi usuario</label>
+            </fieldset>
+            <p class="hint">No se publica sola. Alguien del equipo la revisa antes. Si no entras con una cuenta, guardamos en este navegador un enlace para que veas si se aprueba.</p>
+          </div>
+          <div class="composer-foot">
+            <p id="report-error" class="form-error" hidden></p>
+            <button class="btn btn-mint btn-block" type="submit">Enviar a revisión</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="view view-page" data-view="quejas" hidden>
+      <div class="page">
+        <header class="page-head">
+          <div>
+            <p class="eyebrow">Listado</p>
+            <h1>Quejas publicadas</h1>
+          </div>
+          <button class="btn btn-primary" type="button" data-action="report">Nueva queja</button>
+        </header>
+        <div class="filters" id="list-filters"></div>
+        <div id="list" class="cards"></div>
+      </div>
+    </section>
+
+    <section class="view view-page" data-view="detalle" hidden>
+      <div class="page" id="detail"></div>
+    </section>
+
+    <section class="view view-page" data-view="mias" hidden>
+      <div class="page">
+        <header class="page-head">
+          <div>
+            <p class="eyebrow">Tu actividad</p>
+            <h1>Quejas que has enviado</h1>
+          </div>
+        </header>
+        <p class="lede">Aquí aparecen las de tu cuenta y las anónimas enviadas desde este navegador, también si siguen en revisión.</p>
+        <div id="mine" class="cards"></div>
+      </div>
+    </section>
+
+    <section class="view view-page" data-view="como" hidden>
+      <div class="page prose">
+        <p class="eyebrow">Transparencia</p>
+        <h1>Cómo funciona</h1>
+        <p class="lede">Una queja pequeña, bien situada, es más fácil de enviar al ayuntamiento que le toca.</p>
+        <ol class="steps">
+          <li>
+            <h2>Pones un pin</h2>
+            <p>Acércate y toca el lugar en el mapa, o pulsa «Dónde estoy» para usar la ubicación del móvil. «Satélite» cambia el callejero por la foto aérea. Se abre una ficha encima para elegir el problema, contarlo y enviarlo. Puedes añadir fotos. No hace falta cuenta para publicar.</p>
+          </li>
+          <li>
+            <h2>La revisamos antes de mostrarla</h2>
+            <p>Nada sale al mapa público hasta que moderación la aprueba. Al entrar, el botón Aprobar abre la bandeja de pendientes. En Quejas solo se ven las ya publicadas. Si no se publica, quien la envió puede ver el motivo desde el mismo navegador o desde su cuenta.</p>
+          </li>
+          <li>
+            <h2>Quien vive cerca vota si es real</h2>
+            <p>Solo las cuentas registradas votan, y solo a menos de 10 km de la queja. Así evitamos que se vote en masa desde el otro extremo del país.</p>
+          </li>
+          <li>
+            <h2>Si muchas personas dicen que no es real, se retira</h2>
+            <p>Hacen falta al menos 6 votos y un 70&nbsp;% o más de «No es real». No se borra el rastro para moderación: deja de verse en el mapa.</p>
+          </li>
+          <li>
+            <h2>Abusar del «no es real» tiene consecuencia</h2>
+            <p>Si en 30 días marcas 5 o más quejas como falsas y eso es el 80&nbsp;% o más de tus votos, dejas de votar con libertad durante 7 días. Para recuperar el voto tienes que confirmar 3 quejas que ya tienen un consenso claro de ser reales.</p>
+          </li>
+          <li>
+            <h2>Cuando se arregla, se cierra</h2>
+            <p>Moderación puede marcarla resuelta. También pasa a resuelta si 3 personas a menos de 10 km dicen que ya está arreglada.</p>
+          </li>
+        </ol>
+        <h2>Qué se guarda</h2>
+        <p>De cada queja: el punto, el tipo, el texto, las fotos, la comunidad, la provincia, el ayuntamiento y los votos. De cada cuenta: un nombre inventado y una contraseña. No pedimos correo. Si olvidas la contraseña no podemos recuperarla.</p>
+        <p>La ubicación del voto sale del navegador. Alguien con conocimientos puede falsificarla: por eso hay revisión humana y el sistema de abuso.</p>
+      </div>
+    </section>
+
+    <section class="view view-page" data-view="moderar" hidden>
+      <div class="page page-wide" id="mod"></div>
+    </section>
+  </main>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="modal-root" hidden></div>
+  <noscript><p class="noscript">Esta web necesita JavaScript para el mapa y el envío de quejas.</p></noscript>
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

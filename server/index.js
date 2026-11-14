@@ -25,7 +25,6 @@ const UPLOADS = process.env.UPLOAD_DIR || (process.env.VERCEL === "1"
 function createApp() {
   fs.mkdirSync(UPLOADS, { recursive: true });
   const db = dbApi.getDb();
-  geo.load();
 
   const app = express();
   app.disable("x-powered-by");
@@ -57,6 +56,9 @@ function createApp() {
 
   app.use("/vendor/leaflet", express.static(path.join(ROOT, "node_modules", "leaflet", "dist"), { maxAge: "7d" }));
   app.use(express.static(PUBLIC));
+  app.get("/", (req, res) => {
+    res.redirect(302, "/index.html");
+  });
 
   app.get("/uploads/:file", (req, res) => {
     const name = req.params.file;

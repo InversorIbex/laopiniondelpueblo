@@ -2,7 +2,6 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-const { DatabaseSync } = require("node:sqlite");
 const postgres = require("postgres").default;
 
 const DATA = path.join(__dirname, "..", "data");
@@ -218,6 +217,7 @@ async function seedModerator() {
 }
 
 function openSqlite() {
+  const { DatabaseSync } = require("node:sqlite");
   const file = process.env.DB_PATH || path.join(RUNTIME, "app.sqlite");
   fs.mkdirSync(path.dirname(file), { recursive: true });
   sqlite = new DatabaseSync(file);

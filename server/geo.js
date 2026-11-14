@@ -2,7 +2,16 @@ const fs = require("fs");
 const path = require("path");
 const { haversineKm } = require("./logic");
 
-const DATA = path.join(__dirname, "..", "data");
+function findDataDir() {
+  const candidates = [
+    path.join(process.cwd(), "data"),
+    path.join(__dirname, "..", "data"),
+    path.join(__dirname, "data"),
+  ];
+  return candidates.find((dir) => fs.existsSync(path.join(dir, "provincias.geojson"))) || candidates[0];
+}
+
+const DATA = findDataDir();
 const UA = "ElPuebloTieneLaOpinion/1.0 (plataforma civica local)";
 
 const CCAA_BY_GROUP = {

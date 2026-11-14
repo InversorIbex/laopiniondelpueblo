@@ -11,7 +11,7 @@ npm install
 npm start
 ```
 
-Abre [http://localhost:3000](http://localhost:3000).
+Abre [http://localhost:3000](http://localhost:3000). La app del móvil está en [http://localhost:3000/app/](http://localhost:3000/app/).
 
 ## Vercel
 

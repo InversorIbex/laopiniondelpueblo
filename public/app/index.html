@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>El Pueblo Tiene la Opinión</title>
+  <meta name="description" content="La app para contar lo que falla en tu calle. Cada queja queda en su ayuntamiento.">
+  <meta name="theme-color" content="#1f7a68">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="El Pueblo">
+  <link rel="manifest" href="/app/manifest.webmanifest">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/app/app.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#/mapa">
+      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
+        <rect width="48" height="48" rx="16" fill="#b7e4d4"/>
+        <path d="M13 15h20a8 8 0 0 1 8 8 8 8 0 0 1-8 8H22l-6 5.5V31h-3a8 8 0 0 1-8-8 8 8 0 0 1 8-8z" fill="#fffdf9"/>
+        <circle cx="24" cy="23" r="3.3" fill="#1f6f93"/>
+      </svg>
+      <span>
+        <strong>El Pueblo</strong>
+        <small>Tiene la Opinión</small>
+      </span>
+    </a>
+    <p class="stats" id="stats">…</p>
+  </header>
+
+  <main id="contenido">
+    <section class="screen" data-screen="mapa">
+      <div id="map"></div>
+      <div class="map-tools">
+        <button type="button" data-action="locate">Dónde estoy</button>
+        <button type="button" id="satellite" data-action="satellite" aria-pressed="false">Satélite</button>
+      </div>
+      <form class="search" id="search-form">
+        <input id="search" type="search" placeholder="Buscar pueblo o ciudad" autocomplete="off" enterkeyhint="search">
+        <div id="search-results" class="search-results" hidden></div>
+      </form>
+    </section>
+
+    <section class="screen screen-page" data-screen="quejas" hidden>
+      <div class="page">
+        <p class="eyebrow">Publicadas</p>
+        <h1>Quejas del mapa</h1>
+        <p class="hint">Aquí solo salen las que ya revisó el equipo. Las tuyas, aunque sigan pendientes, están en Mías.</p>
+        <div id="list" class="cards"></div>
+      </div>
+    </section>
+
+    <section class="screen screen-page" data-screen="detalle" hidden>
+      <div class="page" id="detail"></div>
+    </section>
+
+    <section class="screen screen-page" data-screen="mias" hidden>
+      <div class="page">
+        <p class="eyebrow">Tu actividad</p>
+        <h1>Las que has enviado</h1>
+        <p class="hint">Las de tu cuenta y las anónimas de este móvil, también si siguen en revisión.</p>
+        <div id="mine" class="cards"></div>
+      </div>
+    </section>
+
+    <section class="screen screen-page" data-screen="moderar" hidden>
+      <div class="page" id="mod"></div>
+    </section>
+
+    <section class="screen screen-page" data-screen="cuenta" hidden>
+      <div class="page" id="account"></div>
+    </section>
+  </main>
+
+  <form id="report" class="sheet" hidden novalidate>
+    <div class="sheet-bar">
+      <h2>Nueva queja</h2>
+      <button class="text" type="button" data-action="close-report">Cerrar</button>
+    </div>
+    <div class="sheet-body">
+      <p id="place" class="place">Toca el mapa o usa tu ubicación.</p>
+      <button class="soft" type="button" data-action="locate">Usar la ubicación del móvil</button>
+      <label>Cuéntalo
+        <textarea id="comment" maxlength="2000" placeholder="Qué pasa, en qué calle y desde cuándo."></textarea>
+      </label>
+      <p id="count" class="hint">0 / 20 caracteres mínimo</p>
+      <p class="field">Qué ocurre</p>
+      <div id="cats" class="cats"></div>
+      <label>Fotos, si las tienes
+        <input id="photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" capture="environment" multiple>
+      </label>
+      <p class="hint">Hasta 4 fotos, 5 MB. Puedes hacerla ahora.</p>
+      <div id="preview" class="preview"></div>
+      <fieldset>
+        <legend>Cómo firmas</legend>
+        <label class="check"><input type="radio" name="aliasMode" value="auto" checked> Nombre automático</label>
+        <label class="check"><input type="radio" name="aliasMode" value="custom"> Este nombre</label>
+        <input id="alias" type="text" maxlength="24" placeholder="Un alias">
+        <label class="check" id="alias-user" hidden><input type="radio" name="aliasMode" value="user"> Mi usuario</label>
+      </fieldset>
+      <p class="hint">No sale al mapa hasta que la revisen. Sin cuenta, este móvil recuerda la queja.</p>
+    </div>
+    <div class="sheet-foot">
+      <p id="report-error" class="error" hidden></p>
+      <button class="send" type="submit">Enviar a revisión</button>
+    </div>
+  </form>
+
+  <nav class="tabs" aria-label="App">
+    <a href="#/mapa" data-tab="mapa">Mapa</a>
+    <a href="#/quejas" data-tab="quejas">Quejas</a>
+    <button type="button" class="report-tab" data-action="report">Contar</button>
+    <a href="#/mias" data-tab="mias">Mías</a>
+    <a href="#/cuenta" data-tab="cuenta">Cuenta</a>
+  </nav>
+  <div id="toasts" class="toasts"></div>
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="/app/app.js"></script>
+</body>
+</html>

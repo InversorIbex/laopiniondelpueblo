@@ -1,0 +1,20 @@
+{
+  "name": "El Pueblo Tiene la Opinión",
+  "short_name": "El Pueblo",
+  "description": "Cuenta lo que falla en tu calle. La queja queda ligada a tu ayuntamiento.",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f1e7",
+  "theme_color": "#1f7a68",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
